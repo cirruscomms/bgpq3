@@ -324,7 +324,7 @@ main(int argc, char* argv[])
 			break;
 		case 'T': pipelining=0;
 			break;
-		case 's': expander.sequence=1;
+		case 's': expander.sequence=10;
 			break;
 		case 'S': expander.sources=optarg;
 			break;

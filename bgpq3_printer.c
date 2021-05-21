@@ -894,20 +894,8 @@ bgpq3_print_jrfilter(struct sx_radix_node* n, void* ff)
 	if(n->isGlue) goto checkSon;
 	if(!f) f=stdout;
 	sx_prefix_snprintf(&n->prefix,prefix,sizeof(prefix));
-	if(!n->isAggregate) {
-		fprintf(f,"    %s%s exact;\n",
-			jrfilter_prefixed ? "route-filter " : "", prefix);
-	} else {
-		if(n->aggregateLow>n->prefix.masklen) {
-			fprintf(f,"    %s%s prefix-length-range /%u-/%u;\n",
-				jrfilter_prefixed ? "route-filter " : "",
-				prefix,n->aggregateLow,n->aggregateHi);
-		} else {
-			fprintf(f,"    %s%s upto /%u;\n",
-				jrfilter_prefixed ? "route-filter " : "",
-				prefix,n->aggregateHi);
-		};
-	};
+	fprintf(f,"    %s%s orlonger;\n",
+		jrfilter_prefixed ? "route-filter " : "", prefix);
 checkSon:
 	if(n->son)
 		bgpq3_print_jrfilter(n->son, ff);
@@ -925,23 +913,13 @@ bgpq3_print_cprefix(struct sx_radix_node* n, void* ff)
 	if(!f) f=stdout;
 	if(n->isGlue) goto checkSon;
 	sx_prefix_snprintf(&n->prefix,prefix,sizeof(prefix));
-	if(seq)
-		snprintf(seqno, sizeof(seqno), " seq %i", seq++);
-	if(n->isAggregate) {
-		if(n->aggregateLow>n->prefix.masklen) {
-			fprintf(f,"%s prefix-list %s%s permit %s ge %u le %u\n",
-				n->prefix.family==AF_INET?"ip":"ipv6",bname?bname:"NN",seqno,
-				prefix,n->aggregateLow,n->aggregateHi);
-		} else {
-			fprintf(f,"%s prefix-list %s%s permit %s le %u\n",
-				n->prefix.family==AF_INET?"ip":"ipv6",bname?bname:"NN",seqno,
-				prefix,n->aggregateHi);
-		};
-	} else {
-		fprintf(f,"%s prefix-list %s%s permit %s\n",
-			(n->prefix.family==AF_INET)?"ip":"ipv6",bname?bname:"NN",seqno,
-			prefix);
-	};
+	if(seq) {
+		snprintf(seqno, sizeof(seqno), " seq %i", seq);
+		seq=seq+10;
+	}
+	fprintf(f,"%s prefix-list %s%s permit %s le %s\n",
+		(n->prefix.family==AF_INET)?"ip":"ipv6",bname?bname:"NN",seqno,
+		prefix,(n->prefix.family==AF_INET)?"32":"128");
 checkSon:
 	if(n->son)
 		bgpq3_print_cprefix(n->son,ff);
