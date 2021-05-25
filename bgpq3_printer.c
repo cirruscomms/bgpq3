@@ -1148,7 +1148,7 @@ bgpq3_print_juniper_routefilter(FILE* f, struct bgpq_expander* b)
 			fprintf(f,"    %s;\n",b->match);
 	} else {
 		fprintf(f,"policy-options {\n policy-statement %s { \n"
-			"replace:\n  from {\n", b->name?b->name:"NN");
+			"replace:\n  term 1 from {\n", b->name?b->name:"NN");
 		if(b->match)
 			fprintf(f,"    %s;\n",b->match);
 	};
@@ -1162,7 +1162,8 @@ bgpq3_print_juniper_routefilter(FILE* f, struct bgpq_expander* b)
 	if(c) {
 		fprintf(f, "   }\n  }\n }\n}\n");
 	} else {
-		fprintf(f, "  }\n }\n}\n");
+		fprintf(f, "  }\n  term 1 then {\n    next policy;\n  }\n"
+			"  term 2 then {\n    reject;\n  }\n }\n}\n");
 	};
 	return 0;
 };
