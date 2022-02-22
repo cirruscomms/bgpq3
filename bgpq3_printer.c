@@ -354,7 +354,7 @@ bgpq3_print_nokia_aspath(FILE* f, struct bgpq_expander* b)
 		b->name ? b->name : "NN");
 	fprintf(f,"as-path-group \"%s\"\n", b->name ? b->name : "NN");
 
-	if(b->asn32s[b->asnumber/65536] &&
+	if(b->asnumber>0 && b->asn32s[b->asnumber/65536] &&
 		b->asn32s[b->asnumber/65535][(b->asnumber%65536)/8]&
 		(0x80>>(b->asnumber%8))) {
 		fprintf(f,"  entry %u expression \"%u+\"\n", lineNo, b->asnumber);
@@ -365,10 +365,13 @@ bgpq3_print_nokia_aspath(FILE* f, struct bgpq_expander* b)
 		for(i=0;i<8192;i++) {
 			for(j=0;j<8;j++) {
 				if(b->asn32s[k][i]&(0x80>>j)) {
-					if(k*65536+i*8+j==b->asnumber) continue;
-					if(!nc) {
+					if(b->asnumber>0 && k*65536+i*8+j==b->asnumber) continue;
+					if(!nc && b->asnumber!=0) {
 						fprintf(f,"  entry %u expression \"%u.*[%u",
 							lineNo,b->asnumber,k*65536+i*8+j);
+					} else if(!nc) {
+						fprintf(f,"  entry %u expression \".*[%u",
+							lineNo,k*65536+i*8+j);
 					} else {
 						fprintf(f," %u",k*65536+i*8+j);
 					};
@@ -396,7 +399,7 @@ bgpq3_print_nokia_md_aspath(FILE* f, struct bgpq_expander* b)
 		b->name ? b->name : "NN");
 	fprintf(f,"as-path-group \"%s\" {\n", b->name ? b->name : "NN");
 
-	if(b->asn32s[b->asnumber/65536] &&
+	if(b->asnumber!=0 && b->asn32s[b->asnumber/65536] &&
 		b->asn32s[b->asnumber/65535][(b->asnumber%65536)/8]&
 		(0x80>>(b->asnumber%8))) {
 		fprintf(f,"  entry %u {\n    expression \"%u+\"\n  }\n", lineNo,
@@ -408,10 +411,13 @@ bgpq3_print_nokia_md_aspath(FILE* f, struct bgpq_expander* b)
 		for(i=0;i<8192;i++) {
 			for(j=0;j<8;j++) {
 				if(b->asn32s[k][i]&(0x80>>j)) {
-					if(k*65536+i*8+j==b->asnumber) continue;
-					if(!nc) {
+					if(b->asnumber!=0 && k*65536+i*8+j==b->asnumber) continue;
+					if(!nc && b->asnumber!=0) {
 						fprintf(f,"  entry %u {\n    expression \"%u.*[%u",
 							lineNo,b->asnumber,k*65536+i*8+j);
+					} else if(!nc) {
+						fprintf(f,"  entry %u {\n    expression \".*[%u",
+							lineNo,k*65536+i*8+j);
 					} else {
 						fprintf(f," %u",k*65536+i*8+j);
 					};
@@ -442,7 +448,7 @@ bgpq3_print_huawei_aspath(FILE* f, struct bgpq_expander* b)
 	if(b->asnumber!=0 && b->asn32s[b->asnumber/65536] &&
 		b->asn32s[b->asnumber/65535][(b->asnumber%65536)/8]&
 		(0x80>>(b->asnumber%8))) {
-		fprintf(f,"ip as-path-filter %s permit ^%u(%u)*$\n",
+		fprintf(f,"ip as-path-filter %s permit ^%u(_%u)*$\n",
 			b->name?b->name:"NN",b->asnumber,b->asnumber);
 		empty=0;
 	};
@@ -454,7 +460,7 @@ bgpq3_print_huawei_aspath(FILE* f, struct bgpq_expander* b)
 					if(b->asnumber!=0 && k*65536+i*8+j==b->asnumber)
 						continue;
 					if(!nc && b->asnumber!=0) {
-						fprintf(f,"ip as-path-filter %s permit ^%u([0-9]+)*"
+						fprintf(f,"ip as-path-filter %s permit ^%u(_[0-9]+)*"
 							"_(%u",
 							b->name?b->name:"NN",b->asnumber,k*65536+i*8+j);
 						empty=0;
@@ -1132,6 +1138,8 @@ bgpq3_print_juniper_prefixlist(FILE* f, struct bgpq_expander* b)
 	fprintf(f,"policy-options {\nreplace:\n prefix-list %s {\n",
 		b->name?b->name:"NN");
 	sx_radix_tree_foreach(b->tree,bgpq3_print_jprefix,f);
+	if (b->treex)
+		sx_radix_tree_foreach(b->treex, bgpq3_print_jprefix, f);
 	fprintf(f," }\n}\n");
 	return 0;
 };
@@ -1152,12 +1160,17 @@ bgpq3_print_juniper_routefilter(FILE* f, struct bgpq_expander* b)
 		if(b->match)
 			fprintf(f,"    %s;\n",b->match);
 	};
-	if(!sx_radix_tree_empty(b->tree)) {
+	if(!sx_radix_tree_empty(b->tree) || (b->treex &&
+		!sx_radix_tree_empty(b->treex))) {
 		jrfilter_prefixed=1;
 		sx_radix_tree_foreach(b->tree,bgpq3_print_jrfilter,f);
+		if (b->treex)
+			sx_radix_tree_foreach(b->treex, bgpq3_print_jrfilter, f);
 	} else {
 		fprintf(f,"    route-filter %s/0 orlonger reject;\n",
 			b->tree->family == AF_INET ? "0.0.0.0" : "::");
+		if (b->treex)
+			fprintf(f, "    route-filter ::/0 orlonger reject;\n");
 	};
 	if(c) {
 		fprintf(f, "   }\n  }\n }\n}\n");
@@ -1249,6 +1262,8 @@ bgpq3_print_json_prefixlist(FILE* f, struct bgpq_expander* b)
 	fprintf(f,"{ \"%s\": [",
 		b->name?b->name:"NN");
 	sx_radix_tree_foreach(b->tree,bgpq3_print_json_prefix,f);
+	if (b->treex)
+		sx_radix_tree_foreach(b->treex, bgpq3_print_json_prefix, f);
 	fprintf(f,"\n] }\n");
 	return 0;
 };
@@ -1307,12 +1322,13 @@ bgpq3_print_format_prefix(struct sx_radix_node* n, void* ff)
 	fprintf(f, "%s", prefix);
 };
 
-
 int
 bgpq3_print_format_prefixlist(FILE* f, struct bgpq_expander* b)
 {
 	struct fpcbdata ff = {.f=f, .b=b};
 	sx_radix_tree_foreach(b->tree,bgpq3_print_format_prefix,&ff);
+	if (b->treex)
+		sx_radix_tree_foreach(b->treex, bgpq3_print_format_prefix, &ff);
 	if (strcmp(b->format+strlen(b->format-2), "\n"))
 		fprintf(f, "\n");
 	return 0;
@@ -1433,12 +1449,17 @@ bgpq3_print_juniper_route_filter_list(FILE* f, struct bgpq_expander* b)
 {
 	fprintf(f, "policy-options {\nreplace:\n  route-filter-list %s {\n",
 		b->name?b->name:"NN");
-	if (sx_radix_tree_empty(b->tree)) {
+	if (sx_radix_tree_empty(b->tree) && (!b->treex ||
+		sx_radix_tree_empty(b->treex))) {
 		fprintf(f, "    %s/0 orlonger reject;\n",
 			b->tree->family == AF_INET ? "0.0.0.0" : "::");
+		if (b->treex)
+			fprintf(f, "    ::/0 orlonger reject;\n");
 	} else {
 		jrfilter_prefixed=0;
-		sx_radix_tree_foreach(b->tree,bgpq3_print_jrfilter,f);
+		sx_radix_tree_foreach(b->tree, bgpq3_print_jrfilter, f);
+		if (b->treex)
+			sx_radix_tree_foreach(b->treex, bgpq3_print_jrfilter, f);
 	};
 	fprintf(f, "  }\n}\n");
 	return 0;
